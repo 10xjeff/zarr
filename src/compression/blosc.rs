@@ -31,7 +31,8 @@ const COMPRESSOR_ZSTD: &str = "zstd";
 pub struct BloscCompression {
   #[serde(default = "default_blosc_blocksize")]
   blocksize: usize,
-  clevel: u8,  // serialize index into enum by index
+  #[serde(default = "default_blosc_clevel")]
+  clevel: u8,
   cname: String,
   #[serde(default = "default_blosc_shufflemode")]
   shuffle: u8, // serialize shuffle mode into enum by index
@@ -39,6 +40,10 @@ pub struct BloscCompression {
 
 fn default_blosc_blocksize() -> usize {
   0
+}
+
+fn default_blosc_clevel() -> u8 {
+  5
 }
 
 fn default_blosc_shufflemode() -> u8 {
@@ -134,16 +139,11 @@ mod tests {
 
   #[rustfmt::skip]
   const TEST_CHUNK_I16_BLOSC: [u8; 28] = [
-      // 0x00, 0x00,
-      // 0x00, 0x03,
-      // 0x00, 0x00, 0x00, 0x01,
-      // 0x00, 0x00, 0x00, 0x02,
-      // 0x00, 0x00, 0x00, 0x03,
       0x02, 0x01, 0x33, 0x02,
       0x0c, 0x00, 0x00, 0x00,
       0x0c, 0x00, 0x00, 0x00,
       0x1c, 0x00, 0x00, 0x00,
-      0x00, 0x01, 0x00, 0x02,  // big endian
+      0x00, 0x01, 0x00, 0x02, // target payload is big endian
       0x00, 0x03, 0x00, 0x04,
       0x00, 0x05, 0x00, 0x06, // not very compressed now is it
   ];
