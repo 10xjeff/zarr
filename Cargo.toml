@@ -23,7 +23,6 @@ gzip = ["flate2/zlib"]
 gzip_pure = ["flate2"]
 lz = ["lz4"]
 lz_pure = ["lz-fear"]
-use_blosc = ["blosc"]
 use_ndarray = ["itertools", "ndarray"]
 xz = ["xz2"]
 
