@@ -146,9 +146,7 @@ impl Compression for BloscCompression {
         // blosc is all at the same time...
         let mut bytes: Vec<u8> = Vec::new();
         r.read_to_end(&mut bytes);
-        println!("{:?}", bytes);
         let decompressed = BloscCompression::decompress(&bytes).unwrap();
-        println!("{:?}", decompressed);
         Box::new(Cursor::new(decompressed))
     }
 
