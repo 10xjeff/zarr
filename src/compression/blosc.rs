@@ -65,36 +65,36 @@ impl error::Error for BloscError {}
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub struct BloscCompression {
-  #[serde(default = "default_blosc_blocksize")]
-  blocksize: usize,
-  #[serde(default = "default_blosc_clevel")]
-  clevel: u8,
-  cname: String,
-  #[serde(default = "default_blosc_shufflemode")]
-  shuffle: u8, // serialize shuffle mode into enum by index
+    #[serde(default = "default_blosc_blocksize")]
+    blocksize: usize,
+    #[serde(default = "default_blosc_clevel")]
+    clevel: u8,
+    cname: String,
+    #[serde(default = "default_blosc_shufflemode")]
+    shuffle: u8, // serialize shuffle mode into enum by index
 }
 
 fn default_blosc_blocksize() -> usize {
-  0
+    0
 }
 
 fn default_blosc_clevel() -> u8 {
-  5
+    5
 }
 
 fn default_blosc_shufflemode() -> u8 {
-  1
+    1
 }
 
 impl Default for BloscCompression {
-  fn default() -> BloscCompression {
-      BloscCompression {
-          blocksize: default_blosc_blocksize(),
-          clevel: 5,
-          cname: String::from(COMPRESSOR_BLOSCLZ),
-          shuffle: default_blosc_shufflemode(),
-      }
-  }
+    fn default() -> BloscCompression {
+        BloscCompression {
+            blocksize: default_blosc_blocksize(),
+            clevel: 5,
+            cname: String::from(COMPRESSOR_BLOSCLZ),
+            shuffle: default_blosc_shufflemode(),
+        }
+    }
 }
 
 impl BloscCompression {
@@ -142,41 +142,31 @@ impl BloscCompression {
 }
 
 impl Compression for BloscCompression {
-  fn decoder<'a, R: Read + 'a>(&self, mut r: R) -> Box<dyn Read + 'a> {
-      // blosc is all at the same time...
-      let mut bytes: Vec<u8> = Vec::new();
-      r.read_to_end(&mut bytes);
-      println!("{:?}", bytes);
-      let decompressed = unsafe { decompress_bytes(&bytes) }.unwrap();
-      println!("{:?}", decompressed);
-      Box::new(Cursor::new(decompressed))
-  }
+    fn decoder<'a, R: Read + 'a>(&self, mut r: R) -> Box<dyn Read + 'a> {
+        // blosc is all at the same time...
+        let mut bytes: Vec<u8> = Vec::new();
+        r.read_to_end(&mut bytes);
+        println!("{:?}", bytes);
+        let decompressed = BloscCompression::decompress(&bytes).unwrap();
+        println!("{:?}", decompressed);
+        Box::new(Cursor::new(decompressed))
+    }
 
-  // TODO not currently supported
-  fn encoder<'a, W: Write + 'a>(&self, w: W) -> Box<dyn Write + 'a> {
-      // TODO: need wrapper that only does the compression when
-      // the end of the data/EOF is reached.
-      Box::new(w)
-
-      /*
-      let ctx = Context::new()
-          .blocksize(Some(self.blocksize))
-          .clevel(self.clevel_enum())
-          .compressor(self.compressor()).unwrap()
-          .shuffle(self.shuffle_enum());
-
-      // TODO write wrapper that calls ctx.compress(w) when buffer
-      // is complete
-      */
-  }
+    // TODO not currently supported
+    fn encoder<'a, W: Write + 'a>(&self, w: W) -> Box<dyn Write + 'a> {
+        // TODO: need wrapper that only does the compression when
+        // the end of the data/EOF is reached.
+        Box::new(w)
+        // TODO adapt members to compress() method, write compress method
+    }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::compression::CompressionType;
+    use super::*;
+    use crate::compression::CompressionType;
 
-  #[rustfmt::skip]
+    #[rustfmt::skip]
   const TEST_CHUNK_I16_BLOSC: [u8; 28] = [
       0x02, 0x01, 0x33, 0x02,
       0x0c, 0x00, 0x00, 0x00,
@@ -187,46 +177,17 @@ mod tests {
       0x00, 0x05, 0x00, 0x06, // not very compressed now is it
   ];
 
-  #[test]
-  fn test_read_doc_spec_chunk() {
-      let blosc_lz4: BloscCompression = BloscCompression {
-        blocksize: 0,
-        clevel: 5,
-        cname: COMPRESSOR_LZ4.to_string(),
-        shuffle: 1,
-      };
-      crate::tests::test_read_doc_spec_chunk(
-          TEST_CHUNK_I16_BLOSC.as_ref(),
-          CompressionType::Blosc(blosc_lz4),
-      );
-  }
-
-  #[test]
-  // This test is ignored since the compressed stream differs from Java.
-  fn test_write_doc_spec() {
-      let data: [i16; 6] = [1, 2, 3, 4, 5, 6];
-      let ctx = Context::new()
-        .blocksize(Some(0))
-        .clevel(Clevel::L5)
-        .compressor(Compressor::LZ4).unwrap()
-        .shuffle(ShuffleMode::Byte);
-      let buffer = ctx.compress(&data);
-      let bytes: Vec<u8> = buffer.into();
-
-      println!("{:?}", bytes);
-  }
-
-  #[test]
-  #[ignore]
-  fn test_rw() {
-      let blosc_lz4: BloscCompression = BloscCompression {
-        blocksize: 0,
-        clevel: 5,
-        cname: COMPRESSOR_LZ4.to_string(),
-        shuffle: 1,
-      };
-      crate::tests::test_chunk_compression_rw(
-          CompressionType::Blosc(blosc_lz4),
-      );
-  }
+    #[test]
+    fn test_read_doc_spec_chunk() {
+        let blosc_lz4: BloscCompression = BloscCompression {
+            blocksize: 0,
+            clevel: 5,
+            cname: COMPRESSOR_LZ4.to_string(),
+            shuffle: 1,
+        };
+        crate::tests::test_read_doc_spec_chunk(
+            TEST_CHUNK_I16_BLOSC.as_ref(),
+            CompressionType::Blosc(blosc_lz4),
+        );
+    }
 }
