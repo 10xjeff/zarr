@@ -1,23 +1,46 @@
-extern crate blosc;
+extern crate blosc_src;
 
-use std::io::{
-  Read,
-  Write,
-  Cursor,
-};
+/*
+Portions of the blosc decompression code originate from blosc-rs
+(github.com/asomers/blosc-rs).  The code is inlined here in order
+to use the source bindings from blosc-src in order to avoid
+linkages issues in upstream/dependent modules and crates.
 
-use serde::{
-  Deserialize,
-  Serialize,
-};
+The license for blosc-rs is as follows:
 
-use blosc::{
-  Clevel,
-  Compressor,
-  Context,
-  ShuffleMode,
-  decompress_bytes,
-};
+Copyright (c) 2018 Alan Somers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+*/
+
+use std::io::{Cursor, Read, Write};
+use std::{error, fmt, mem, os::raw::c_void, ptr};
+
+use serde::{Deserialize, Serialize};
+
+use blosc_src::*;
 
 use super::Compression;
 
@@ -25,6 +48,19 @@ const COMPRESSOR_BLOSCLZ: &str = "blosclz";
 const COMPRESSOR_LZ4: &str = "lz4";
 const COMPRESSOR_ZLIB: &str = "zlib";
 const COMPRESSOR_ZSTD: &str = "zstd";
+
+/// An unspecified error from C-Blosc
+/// Same BloscError as github.com/asomers/blosc-rs (blosc v0.1.3)
+#[derive(Clone, Copy, Debug)]
+pub struct BloscError;
+
+impl fmt::Display for BloscError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unspecified error from c-Blosc")
+    }
+}
+
+impl error::Error for BloscError {}
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -62,44 +98,47 @@ impl Default for BloscCompression {
 }
 
 impl BloscCompression {
-  // convert cname to compressor (todo: possible to do this in serde?)
-  fn compressor(&self) -> Compressor {
-    match self.cname.as_str() {
-      COMPRESSOR_BLOSCLZ => Compressor::BloscLZ,
-      COMPRESSOR_LZ4 => Compressor::LZ4,
-      COMPRESSOR_ZLIB => Compressor::Zlib,
-      COMPRESSOR_ZSTD => Compressor::Zstd,
-      _ => Compressor::Invalid,
+    fn decompress<T>(src: &[u8]) -> Result<Vec<T>, BloscError> {
+        unsafe { BloscCompression::decompress_bytes(src) }
     }
-  }
 
-  fn clevel_enum(&self) -> Clevel {
-    // there has to be a better way to do this but the enum
-    // was not marked FromPrimitive so *shrug*
-    match self.clevel {
-        0 => Clevel::None,
-        1 => Clevel::L1,
-        2 => Clevel::L2,
-        3 => Clevel::L3,
-        4 => Clevel::L4,
-        5 => Clevel::L5,
-        6 => Clevel::L6,
-        7 => Clevel::L7,
-        8 => Clevel::L8,
-        9 => Clevel::L9,
-        _ => Clevel::None,
-    }
-  }
+    // Adapted from https://github.com/asomers/blosc-rs
+    //
+    // same as decompress_bytes from blosc-0.1.3, but use the
+    // blosc-src direct lib to allow easier builds without
+    // linkage
+    unsafe fn decompress_bytes<T>(src: &[u8]) -> Result<Vec<T>, BloscError> {
+        let typesize = mem::size_of::<T>();
+        let mut nbytes: usize = 0;
+        let mut _cbytes: usize = 0;
+        let mut _blocksize: usize = 0;
 
-  // convert serialized shuffle val to mode
-  fn shuffle_enum(&self) -> ShuffleMode {
-    match self.shuffle {
-      0 => ShuffleMode::None,
-      1 => ShuffleMode::Byte,
-      2 => ShuffleMode::Bit,
-      _ => ShuffleMode::None, // defensive here
+        // unsafe
+        blosc_cbuffer_sizes(
+            src.as_ptr() as *const c_void,
+            &mut nbytes as *mut usize,
+            &mut _cbytes as *mut usize,
+            &mut _blocksize as *mut usize,
+        );
+        let dest_size = nbytes / typesize;
+        let mut dest: Vec<T> = Vec::with_capacity(dest_size);
+
+        // unsafe
+        let rsize = blosc_decompress_ctx(
+            src.as_ptr() as *const c_void,
+            dest.as_mut_ptr() as *mut c_void,
+            nbytes,
+            1,
+        );
+        if rsize > 0 {
+            // unsafe
+            dest.set_len(rsize as usize / typesize);
+            dest.shrink_to_fit();
+            Ok(dest)
+        } else {
+            Err(BloscError)
+        }
     }
-  }
 }
 
 impl Compression for BloscCompression {
